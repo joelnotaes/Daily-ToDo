@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kenvelo Daily Planner</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#334155">
 <style>
   :root {
     --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1;
@@ -386,6 +388,10 @@
     await loadDay(current);
     render();
   })();
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
 })();
 </script>
 </body>
