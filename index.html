@@ -322,17 +322,31 @@
       render();
     });
     root.querySelectorAll('[data-add]').forEach(el => {
+      // "Empty space" taps (bottom spacer, or the empty-state hint text) should
+      // just dismiss the keyboard on the first tap, and only create a task on
+      // a second, deliberate tap. The explicit "add" button always adds right away.
+      const isEmptySpace = el.classList.contains("spacer-tap") || el.classList.contains("empty-hint");
+      let inputWasFocused = false;
+      if (isEmptySpace) {
+        // Must capture BEFORE the click fires: the browser blurs the focused
+        // input as part of mousedown/touchstart's default action, so by the
+        // time "click" runs, document.activeElement is already gone.
+        const captureFocus = () => {
+          const active = document.activeElement;
+          inputWasFocused = !!(active && active.classList && active.classList.contains("task-text"));
+        };
+        el.addEventListener("touchstart", captureFocus, { passive: true });
+        el.addEventListener("mousedown", captureFocus);
+      }
       el.addEventListener("click", (e) => {
         if (e.target !== el && el.classList.contains("task-list")) return;
         const key = el.dataset.add;
-        if (el.classList.contains("spacer-tap")) {
-          const active = document.activeElement;
-          if (active && active.classList && active.classList.contains("task-text")) {
-            active.blur(); // first tap: just dismiss the keyboard
-            return;
-          }
+        if (isEmptySpace && inputWasFocused) {
+          inputWasFocused = false;
+          if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+          return; // first tap: just dismiss the keyboard
         }
-        addTask(key); // second tap (keyboard already down), or tapping "add"/empty-hint directly
+        addTask(key); // second tap (keyboard already down), or tapping "add" directly
       });
     });
     root.querySelectorAll('[data-action="toggle"]').forEach(el => {
