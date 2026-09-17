@@ -176,24 +176,45 @@
     bar.innerHTML = `${statusIcon}<span>${statusLabel}</span>`;
   }
 
-  // Replace all rows for the current date with the current in-memory state.
+  // Replace all rows for the given date with the given in-memory state.
   // Simple approach: delete existing rows for this date, then insert current ones.
+  // IMPORTANT: both the date key and the task snapshot are captured at schedule
+  // time (not at execution time), so a day change before the debounce fires
+  // can never write one day's tasks into another day's slot.
   let saveTimer = null;
   function scheduleSave() {
     setStatus("pending");
     if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(doSave, 500);
+    const targetKey = dateKey(current);
+    const workSnapshot = work.map(t => ({ ...t }));
+    const personalSnapshot = personal.map(t => ({ ...t }));
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      doSave(targetKey, workSnapshot, personalSnapshot);
+    }, 500);
   }
 
-  async function doSave() {
-    const key = dateKey(current);
+  // Cancel any pending debounced save and run it immediately, using the
+  // exact data/date it was scheduled with. Call this before switching days
+  // so an in-flight edit never lands on the wrong day.
+  async function flushPendingSave() {
+    if (!saveTimer) return;
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    const targetKey = dateKey(current);
+    const workSnapshot = work.map(t => ({ ...t }));
+    const personalSnapshot = personal.map(t => ({ ...t }));
+    await doSave(targetKey, workSnapshot, personalSnapshot);
+  }
+
+  async function doSave(targetKey, workList, personalList) {
     try {
       // delete existing rows for this day
-      await fetch(`${REST_URL}?date=eq.${key}`, { method: "DELETE", headers: sbHeaders });
+      await fetch(`${REST_URL}?date=eq.${targetKey}`, { method: "DELETE", headers: sbHeaders });
 
       const rows = [
-        ...work.map(t => ({ date: key, section: "work", text: t.text, hour: t.hour, done: t.done })),
-        ...personal.map(t => ({ date: key, section: "personal", text: t.text, hour: t.hour, done: t.done }))
+        ...workList.map(t => ({ date: targetKey, section: "work", text: t.text, hour: t.hour, done: t.done })),
+        ...personalList.map(t => ({ date: targetKey, section: "personal", text: t.text, hour: t.hour, done: t.done }))
       ];
 
       if (rows.length > 0) {
@@ -212,6 +233,7 @@
   }
 
   async function shiftDay(delta) {
+    await flushPendingSave();
     const d = new Date(current);
     d.setDate(d.getDate() + delta);
     current = d;
@@ -294,6 +316,7 @@
       el.addEventListener("click", () => shiftDay(parseInt(el.dataset.nav, 10)));
     });
     root.querySelector('[data-today]').addEventListener("click", async () => {
+      await flushPendingSave();
       current = new Date();
       await loadDay(current);
       render();
@@ -362,7 +385,7 @@
 
     const statusBarEl = root.querySelector(".status-bar");
     if (statusBarEl && saveStatus === "error") {
-      statusBarEl.addEventListener("click", () => { doSave(); });
+      statusBarEl.addEventListener("click", () => { flushPendingSave(); doSave(dateKey(current), work, personal); });
     }
 
     let longPressTimer = null;
@@ -471,7 +494,8 @@
   window.addEventListener("beforeunload", () => {
     if (saveTimer) {
       clearTimeout(saveTimer);
-      doSave();
+      saveTimer = null;
+      doSave(dateKey(current), work, personal);
     }
   });
 
