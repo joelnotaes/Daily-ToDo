@@ -407,20 +407,33 @@
       const id = rowEl.dataset.id;
       const toggleBtn = rowEl.querySelector('[data-action="toggle"]');
       const key = toggleBtn ? toggleBtn.dataset.key : null;
+      let startX = 0, startY = 0;
       const startPress = (e) => {
+        // Never trigger the move-menu from the text input itself —
+        // holding while typing/correcting text should never move a task.
+        if (e.target && e.target.dataset && e.target.dataset.action === "text") return;
         const x = e.touches ? e.touches[0].clientX : e.clientX;
         const y = e.touches ? e.touches[0].clientY : e.clientY;
+        startX = x; startY = y;
         longPressTimer = setTimeout(() => {
           if (key) showTaskMenu(x, y, key, id);
         }, 550);
       };
-      const cancelPress = () => { if (longPressTimer) clearTimeout(longPressTimer); };
+      const cancelPress = () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
+      const moveCancel = (e) => {
+        if (!longPressTimer) return;
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        // Cancel on any real drag (scroll, swipe), not just a touchmove event firing.
+        if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) cancelPress();
+      };
       rowEl.addEventListener("touchstart", startPress, { passive: true });
       rowEl.addEventListener("touchend", cancelPress);
-      rowEl.addEventListener("touchmove", cancelPress);
+      rowEl.addEventListener("touchmove", moveCancel, { passive: true });
       rowEl.addEventListener("mousedown", startPress);
       rowEl.addEventListener("mouseup", cancelPress);
       rowEl.addEventListener("mouseleave", cancelPress);
+      rowEl.addEventListener("mousemove", moveCancel);
     });
 
     const focusedInput = focusId && root.querySelector(`[data-action="text"][data-id="${focusId}"]`);
