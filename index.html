@@ -64,7 +64,7 @@
     padding: 0 16px 12px;
     scroll-margin-bottom: 60px;
   }
-  .empty-hint { font-size: 14px; color: var(--slate-300); font-style: italic; padding: 8px 4px; cursor: pointer; margin: 0; }
+  .empty-hint { font-size: 14px; color: var(--slate-300); font-style: italic; padding: 8px 4px; margin: 0; }
   .task-row {
     display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--slate-100); padding: 6px 0;
   }
@@ -84,6 +84,18 @@
   .hour-input:focus { box-shadow: 0 0 0 1px var(--slate-400); }
   .del-btn { color: var(--slate-300); background: none; border: none; cursor: pointer; flex-shrink: 0; display:flex; }
   .del-btn:hover { color: var(--red-500); }
+
+  /* Large + button at bottom of each section */
+  .big-add {
+    display: flex; align-items: center; justify-content: center;
+    width: 56px; height: 56px; margin: 14px auto 4px;
+    border-radius: 50%; border: 2px solid var(--slate-300);
+    background: var(--slate-50); color: var(--slate-500);
+    font-size: 34px; line-height: 1; font-weight: 300; cursor: pointer;
+    padding: 0; padding-bottom: 3px;
+  }
+  .big-add:hover, .big-add:active { background: var(--slate-700); border-color: var(--slate-700); color: #fff; }
+
   .task-menu {
     position: fixed; z-index: 50; background: #fff; border: 1px solid var(--slate-200);
     border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); overflow: hidden;
@@ -92,11 +104,39 @@
     display: block; width: 100%; text-align: left; padding: 10px 16px; font-size: 14px;
     background: none; border: none; cursor: pointer; color: var(--slate-800); white-space: nowrap;
   }
+  .task-menu button + button { border-top: 1px solid var(--slate-100); }
   .task-menu button:hover { background: var(--slate-100); }
   .task-menu-overlay { position: fixed; inset: 0; z-index: 40; background: transparent; }
+
+  /* Calendar picker */
+  .cal-overlay {
+    position: fixed; inset: 0; z-index: 60; background: rgba(15,23,42,0.45);
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+  }
+  .cal-box {
+    background: #fff; border-radius: 14px; width: 100%; max-width: 340px;
+    padding: 14px; box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+  }
+  .cal-title { text-align: center; font-size: 12px; color: var(--slate-500); margin: 0 0 6px; }
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .cal-head span { font-size: 15px; font-weight: 600; color: var(--slate-800); }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-dow { text-align: center; font-size: 11px; color: var(--slate-400); padding: 4px 0; }
+  .cal-day {
+    aspect-ratio: 1; border: none; background: none; border-radius: 50%;
+    font-size: 14px; color: var(--slate-800); cursor: pointer; padding: 0;
+  }
+  .cal-day:hover { background: var(--slate-100); }
+  .cal-day.today { border: 1px solid var(--slate-400); }
+  .cal-day.current { background: var(--slate-200); color: var(--slate-500); cursor: default; }
+  .cal-cancel {
+    display: block; width: 100%; margin-top: 10px; padding: 10px; font-size: 14px;
+    background: var(--slate-100); border: none; border-radius: 8px; color: var(--slate-700); cursor: pointer;
+  }
+
   .spacer-tap {
     height: calc(56px + var(--kb-offset));
-    width: 100%; cursor: text;
+    width: 100%;
     transition: height 0.15s ease;
   }
   .divider { height: 1px; background: var(--slate-200); }
@@ -177,10 +217,8 @@
   }
 
   // Replace all rows for the given date with the given in-memory state.
-  // Simple approach: delete existing rows for this date, then insert current ones.
-  // IMPORTANT: both the date key and the task snapshot are captured at schedule
-  // time (not at execution time), so a day change before the debounce fires
-  // can never write one day's tasks into another day's slot.
+  // Date key and task snapshot are captured at schedule time so a day change
+  // before the debounce fires can never write one day's tasks into another day.
   let saveTimer = null;
   function scheduleSave() {
     setStatus("pending");
@@ -194,9 +232,6 @@
     }, 500);
   }
 
-  // Cancel any pending debounced save and run it immediately, using the
-  // exact data/date it was scheduled with. Call this before switching days
-  // so an in-flight edit never lands on the wrong day.
   async function flushPendingSave() {
     if (!saveTimer) return;
     clearTimeout(saveTimer);
@@ -209,7 +244,6 @@
 
   async function doSave(targetKey, workList, personalList) {
     try {
-      // delete existing rows for this day
       await fetch(`${REST_URL}?date=eq.${targetKey}`, { method: "DELETE", headers: sbHeaders });
 
       const rows = [
@@ -256,7 +290,7 @@
     const sorted = [...tasks].sort((a, b) => (a.done === b.done ? 0 : a.done ? 1 : -1));
     let rowsHtml = "";
     if (sorted.length === 0) {
-      rowsHtml = `<p class="empty-hint" data-add="${key}">Tap to add a task</p>`;
+      rowsHtml = `<p class="empty-hint">No tasks</p>`;
     } else {
       rowsHtml = sorted.map(t => `
         <div class="task-row" data-id="${t.id}">
@@ -278,7 +312,8 @@
         </div>
         <div class="task-list" data-list="${key}">
           ${rowsHtml}
-          <div class="spacer-tap" data-add="${key}"></div>
+          <button class="big-add" data-add="${key}" aria-label="Add ${title} task">+</button>
+          <div class="spacer-tap" data-dismiss="1"></div>
         </div>
       </div>
     `;
@@ -321,34 +356,18 @@
       await loadDay(current);
       render();
     });
+
+    // Only the explicit "add" and big "+" buttons create tasks.
     root.querySelectorAll('[data-add]').forEach(el => {
-      // "Empty space" taps (bottom spacer, or the empty-state hint text) should
-      // just dismiss the keyboard on the first tap, and only create a task on
-      // a second, deliberate tap. The explicit "add" button always adds right away.
-      const isEmptySpace = el.classList.contains("spacer-tap") || el.classList.contains("empty-hint");
-      let inputWasFocused = false;
-      if (isEmptySpace) {
-        // Must capture BEFORE the click fires: the browser blurs the focused
-        // input as part of mousedown/touchstart's default action, so by the
-        // time "click" runs, document.activeElement is already gone.
-        const captureFocus = () => {
-          const active = document.activeElement;
-          inputWasFocused = !!(active && active.classList && active.classList.contains("task-text"));
-        };
-        el.addEventListener("touchstart", captureFocus, { passive: true });
-        el.addEventListener("mousedown", captureFocus);
-      }
-      el.addEventListener("click", (e) => {
-        if (e.target !== el && el.classList.contains("task-list")) return;
-        const key = el.dataset.add;
-        if (isEmptySpace && inputWasFocused) {
-          inputWasFocused = false;
-          if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-          return; // first tap: just dismiss the keyboard
-        }
-        addTask(key); // second tap (keyboard already down), or tapping "add" directly
+      el.addEventListener("click", () => addTask(el.dataset.add));
+    });
+    // Tapping empty space never adds a task; it just closes the keyboard.
+    root.querySelectorAll('[data-dismiss]').forEach(el => {
+      el.addEventListener("click", () => {
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       });
     });
+
     root.querySelectorAll('[data-action="toggle"]').forEach(el => {
       el.addEventListener("click", () => {
         const list = el.dataset.key === "work" ? work : personal;
@@ -409,8 +428,7 @@
       const key = toggleBtn ? toggleBtn.dataset.key : null;
       let startX = 0, startY = 0;
       const startPress = (e) => {
-        // Never trigger the move-menu from the text input itself —
-        // holding while typing/correcting text should never move a task.
+        // Never trigger the move-menu from the text input itself.
         if (e.target && e.target.dataset && e.target.dataset.action === "text") return;
         const x = e.touches ? e.touches[0].clientX : e.clientX;
         const y = e.touches ? e.touches[0].clientY : e.clientY;
@@ -424,7 +442,6 @@
         if (!longPressTimer) return;
         const x = e.touches ? e.touches[0].clientX : e.clientX;
         const y = e.touches ? e.touches[0].clientY : e.clientY;
-        // Cancel on any real drag (scroll, swipe), not just a touchmove event firing.
         if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) cancelPress();
       };
       rowEl.addEventListener("touchstart", startPress, { passive: true });
@@ -452,6 +469,7 @@
     render();
   }
 
+  // ---- Long-press menu ----
   function closeTaskMenu() {
     if (window._taskMenuEls) {
       window._taskMenuEls.forEach(el => el.remove());
@@ -468,18 +486,89 @@
 
     const menu = document.createElement("div");
     menu.className = "task-menu";
-    menu.style.left = Math.min(x, window.innerWidth - 190) + "px";
-    menu.style.top = Math.min(y, window.innerHeight - 50) + "px";
-    menu.innerHTML = `<button data-move="1">Move to tomorrow →</button>`;
-    menu.querySelector("[data-move]").addEventListener("click", () => {
-      moveTaskToNextDay(key, id);
+    menu.style.left = Math.max(8, Math.min(x, window.innerWidth - 210)) + "px";
+    menu.style.top = Math.max(8, Math.min(y, window.innerHeight - 100)) + "px";
+    menu.innerHTML = `
+      <button data-move-tomorrow="1">Move to tomorrow →</button>
+      <button data-move-other="1">Move to other day…</button>
+    `;
+    menu.querySelector("[data-move-tomorrow]").addEventListener("click", () => {
+      const next = new Date(current);
+      next.setDate(next.getDate() + 1);
       closeTaskMenu();
+      moveTaskToDate(key, id, next);
+    });
+    menu.querySelector("[data-move-other]").addEventListener("click", () => {
+      closeTaskMenu();
+      showCalendar(key, id);
     });
     document.body.appendChild(menu);
     window._taskMenuEls = [overlay, menu];
   }
 
-  async function moveTaskToNextDay(key, id) {
+  // ---- Calendar picker for "Move to other day" ----
+  function closeCalendar() {
+    if (window._calEl) { window._calEl.remove(); window._calEl = null; }
+  }
+
+  function showCalendar(key, id) {
+    closeCalendar();
+    let viewYear = current.getFullYear();
+    let viewMonth = current.getMonth();
+    const todayKey = dateKey(new Date());
+    const currentKey = dateKey(current);
+
+    const overlay = document.createElement("div");
+    overlay.className = "cal-overlay";
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeCalendar(); });
+    const box = document.createElement("div");
+    box.className = "cal-box";
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    window._calEl = overlay;
+
+    function draw() {
+      const first = new Date(viewYear, viewMonth, 1);
+      const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+      const lead = first.getDay();
+      const monthLabel = first.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+      const dows = ["S","M","T","W","T","F","S"].map(d => `<div class="cal-dow">${d}</div>`).join("");
+      let cells = "";
+      for (let i = 0; i < lead; i++) cells += `<div></div>`;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const k = dateKey(new Date(viewYear, viewMonth, day));
+        const cls = "cal-day" + (k === todayKey ? " today" : "") + (k === currentKey ? " current" : "");
+        cells += `<button class="${cls}" data-day="${day}">${day}</button>`;
+      }
+      box.innerHTML = `
+        <p class="cal-title">Move task to…</p>
+        <div class="cal-head">
+          <button class="nav-btn" data-cal="-1">${icon("chevronLeft")}</button>
+          <span>${monthLabel}</span>
+          <button class="nav-btn" data-cal="1">${icon("chevronRight")}</button>
+        </div>
+        <div class="cal-grid">${dows}${cells}</div>
+        <button class="cal-cancel" data-cal-cancel="1">Cancel</button>
+      `;
+      box.querySelectorAll("[data-cal]").forEach(b => b.addEventListener("click", () => {
+        viewMonth += parseInt(b.dataset.cal, 10);
+        if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+        if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+        draw();
+      }));
+      box.querySelector("[data-cal-cancel]").addEventListener("click", closeCalendar);
+      box.querySelectorAll("[data-day]").forEach(b => b.addEventListener("click", () => {
+        const target = new Date(viewYear, viewMonth, parseInt(b.dataset.day, 10));
+        if (dateKey(target) === currentKey) return; // same day: nothing to move
+        closeCalendar();
+        moveTaskToDate(key, id, target);
+      }));
+    }
+    draw();
+  }
+
+  // Move a task to another day, keeping it in the same category (work/personal).
+  async function moveTaskToDate(key, id, targetDate) {
     const list = key === "work" ? work : personal;
     const idx = list.findIndex(x => x.id === id);
     if (idx === -1) return;
@@ -487,16 +576,13 @@
     scheduleSave(); // persists the removal from the current day
     render();
 
-    const nextDate = new Date(current);
-    nextDate.setDate(nextDate.getDate() + 1);
-    const nextKey = dateKey(nextDate);
     try {
       await fetch(REST_URL, {
         method: "POST",
         headers: { ...sbHeaders, "Prefer": "return=minimal" },
-        body: JSON.stringify([{ date: nextKey, section: key, text: t.text, hour: t.hour, done: t.done }])
+        body: JSON.stringify([{ date: dateKey(targetDate), section: key, text: t.text, hour: t.hour, done: t.done }])
       });
-    } catch (e) { /* best effort — task will still show if user navigates and it partially failed */ }
+    } catch (e) { /* best effort */ }
   }
 
   // swipe navigation
@@ -517,7 +603,6 @@
     window.visualViewport.addEventListener("scroll", applyKeyboardOffset);
   }
 
-  // best-effort flush of any pending save on close
   window.addEventListener("beforeunload", () => {
     if (saveTimer) {
       clearTimeout(saveTimer);
